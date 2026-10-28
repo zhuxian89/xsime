@@ -151,7 +151,19 @@ private struct KeyboardAppearancePreview: View {
                     }
                     ForEach(geometry.controls.keys.sorted { $0.rawValue < $1.rawValue }, id: \.self) { action in
                         if let frame = geometry.controls[action] {
-                            cap(label(action), functional: layout == .qwerty && action != .space)
+                            Group {
+                                if action == .punctuation {
+                                    VStack(spacing: 0) {
+                                        ForEach(["，", "。", "？", "！"], id: \.self) { mark in
+                                            Text(mark).frame(maxWidth: .infinity, maxHeight: .infinity)
+                                        }
+                                    }
+                                    .background(Color(uiColor: theme.palette.functional))
+                                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                                } else {
+                                    cap(label(action), functional: layout == .qwerty && action != .space)
+                                }
+                            }
                                 .frame(width: frame.width * scale, height: frame.height * scale)
                                 .position(x: frame.midX * scale, y: frame.midY * scale)
                         }

@@ -36,16 +36,16 @@ struct StandardKeyboardGeometry {
             func cell(_ column: Int, _ row: Int, columns: Int = 1, rows: Int = 1) -> CGRect {
                 rect(CGFloat(column) * (unit + gap), row, CGFloat(columns) * unit + CGFloat(columns - 1) * gap, span: rows)
             }
-            // Same bottom row as QWERTY: 123 | 中/英 | space | return. No emoji
-            // key, matching Apple's layout; the system globe key offers emoji.
-            value.controls = [.symbols: cell(0, 0), .punctuation: cell(1, 0), .backspace: cell(4, 0),
-                .spelling: cell(0, 1, rows: 2), .separator: cell(4, 1),
-                .enter: cell(4, 2, rows: 2)]
-            // The bottom row's side keys are narrower than a grid column, which leaves Space longer.
-            let side = unit * 0.78, spaceStart = 2 * (side + gap)
-            value.controls[.numbers] = rect(0, 3, side)
-            value.controls[.language] = rect(side + gap, 3, side)
-            value.controls[.space] = rect(spaceStart, 3, 4 * unit + 3 * gap - spaceStart)
+            // A permanent, scrollable punctuation column; candidates remain available.
+            value.controls = [.punctuation: cell(0, 0, rows: 3), .spelling: cell(1, 0),
+                .backspace: cell(4, 0), .separator: cell(4, 1), .enter: cell(4, 2, rows: 2),
+                .symbols: cell(0, 3)]
+            let side = unit * 0.78
+            value.controls[.numbers] = rect(unit + gap, 3, side)
+            let languageX = 4 * (unit + gap) - gap - side
+            value.controls[.language] = rect(languageX, 3, side)
+            let spaceStart = unit + gap + side + gap
+            value.controls[.space] = rect(spaceStart, 3, languageX - gap - spaceStart)
             for (digit, label, column, row) in [("2", "ABC", 2, 0), ("3", "DEF", 3, 0),
                 ("4", "GHI", 1, 1), ("5", "JKL", 2, 1), ("6", "MNO", 3, 1),
                 ("7", "PQRS", 1, 2), ("8", "TUV", 2, 2), ("9", "WXYZ", 3, 2)] {

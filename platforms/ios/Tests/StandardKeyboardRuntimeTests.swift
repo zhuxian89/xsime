@@ -160,9 +160,8 @@ import RimesCore
         keyboard.developmentTapShift()
         XCTAssertEqual(keyboard.developmentShiftState, "off")
     }
-    /// Nine-key and QWERTY share one bottom row so switching layouts keeps every
-    /// control where the thumb expects it, and neither carries an emoji key.
-    func testNineKeyAndQwertyShareTheAppleBottomRow() throws {
+    /// Nine-key keeps symbols under the rail and language beside Space.
+    func testStandardBottomRowsKeepUtilitiesAndSpace() throws {
         for width: CGFloat in [310, 383, 842] {
             for mode in [StandardKeyboardMode.qwerty, .nineKey] {
                 let geometry = StandardKeyboardGeometry.make(width: width, mode: mode, landscape: width > 600)
@@ -172,7 +171,11 @@ import RimesCore
                 for frame in row { XCTAssertEqual(frame.maxY, geometry.height, accuracy: 0.01) }
                 XCTAssertEqual(enter.maxY, geometry.height, accuracy: 0.01)
                 XCTAssertLessThan(row[0].minX, row[1].minX)
-                XCTAssertLessThan(row[1].minX, row[2].minX)
+                if mode == .nineKey {
+                    XCTAssertLessThan(row[2].minX, row[1].minX)
+                    XCTAssertEqual(geometry.controls[.punctuation]?.minX, 0)
+                    XCTAssertEqual(geometry.controls[.symbols]?.minX, 0)
+                } else { XCTAssertLessThan(row[1].minX, row[2].minX) }
                 XCTAssertLessThan(row[2].minX, enter.minX)
             }
         }
@@ -358,37 +361,35 @@ import RimesCore
         keyboard.developmentLanguage(); keyboard.developmentNumeric(); keyboard.developmentType(",")
         XCTAssertEqual(keyboard.layoutProxy.native.text, ","); XCTAssertEqual(keyboard.layoutViews.keys.standardMode, .numeric)
     }
-    func testNineKeyPunctuationKeyOffersMarksInTheCandidateRow() async throws {
+    func testNineKeyRailInsertsDirectlyAndPreservesCandidates() async throws {
         for buffered in [false, true] {
             let (window, keyboard) = host(); defer { window.isHidden = true }
             keyboard.developmentOrdinaryAppearance(layout: .nineKey); keyboard.developmentChoose(.pinyin)
             if buffered { keyboard.developmentBuffer("") }
-            let key = try XCTUnwrap(keyboard.developmentStandardFunctions[.punctuation] as? UIControl)
+            window.layoutIfNeeded(); keyboard.view.layoutIfNeeded()
+            let rail = try XCTUnwrap(keyboard.developmentStandardFunctions[.punctuation] as? NineKeyPunctuationRail)
             let strip = keyboard.layoutViews.candidates
-            func marks() -> [String] { strip.buttons.compactMap(\.currentTitle) }
             func text() -> String { buffered ? keyboard.developmentBufferSource.text : keyboard.layoutProxy.native.text }
-            XCTAssertFalse(keyboard.developmentShortcuts.isHidden)
-            key.sendActions(for: .touchUpInside)
-            XCTAssertEqual(marks(), PunctuationLayout.strip)
-            XCTAssertTrue(key.isSelected); XCTAssertTrue(keyboard.developmentShortcuts.isHidden)
-            strip.buttons[4].sendActions(for: .touchUpInside)
-            XCTAssertEqual(text(), "、"); XCTAssertTrue(marks().isEmpty); XCTAssertFalse(key.isSelected)
+            XCTAssertFalse(rail.isHidden)
+            XCTAssertEqual(Array(rail.buttons.prefix(4)).compactMap(\.currentTitle), ["，", "。", "？", "！"])
+            rail.buttons[4].sendActions(for: .touchUpInside)
+            XCTAssertEqual(text(), "、")
             XCTAssertEqual(keyboard.layoutViews.keys.standardMode, .nineKey)
-            // While composing, a mark first confirms the top candidate.
             keyboard.developmentType("64426")
             let top = try XCTUnwrap(strip.buttons.first?.currentTitle)
-            key.sendActions(for: .touchUpInside); XCTAssertEqual(marks(), PunctuationLayout.strip)
-            strip.buttons[0].sendActions(for: .touchUpInside)
+            rail.buttons[0].sendActions(for: .touchUpInside)
             await keyboard.developmentWaitForDelivery()
             XCTAssertEqual(text(), "、" + top + "，"); XCTAssertTrue(keyboard.developmentRaw.isEmpty)
-            // Any typing key puts the strip away without typing a mark.
-            key.sendActions(for: .touchUpInside); XCTAssertTrue(key.isSelected)
-            keyboard.layoutViews.keys.onTypingPress?()
-            XCTAssertFalse(key.isSelected); XCTAssertTrue(marks().isEmpty)
-            // So does leaving the nine-key letters.
-            key.sendActions(for: .touchUpInside); keyboard.developmentNumeric()
-            XCTAssertFalse(key.isSelected); XCTAssertTrue(marks().isEmpty)
-            XCTAssertEqual(text(), "、" + top + "，")
+            XCTAssertEqual(keyboard.layoutViews.keys.standardMode, .nineKey)
+            XCTAssertGreaterThan(rail.contentSize.height, rail.bounds.height)
+            if buffered { XCTAssertTrue(keyboard.layoutProxy.native.text.isEmpty) }
+            let image = UIGraphicsImageRenderer(bounds: keyboard.view.bounds).image { keyboard.view.layer.render(in: $0.cgContext) }
+            let attachment = XCTAttachment(image: image); attachment.name = "nine-key-punctuation-\(buffered ? "buffer" : "host")"
+            attachment.lifetime = .keepAlways; add(attachment)
+            keyboard.developmentNumeric()
+            XCTAssertTrue(rail.isHidden)
+            rail.buttons[0].sendActions(for: .touchUpInside)
+            XCTAssertEqual(text(), "、" + top + "，", "A hidden rail cannot insert into a different layout")
         }
     }
     private func host() -> (UIWindow, KeyboardViewController) {

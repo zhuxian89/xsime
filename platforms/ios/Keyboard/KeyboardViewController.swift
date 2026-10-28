@@ -144,12 +144,11 @@ final class KeyboardViewController: UIInputViewController {
     private var syncingCustomLayout = false
     private let customGlobeSpacer = UIView()
     private let customEmojiKey = KeycapButton(), customBufferKey = KeycapButton()
-    private let symbolsKey = KeycapButton(), separatorKey = KeycapButton(), spellingKey = KeycapButton(), punctuationKey = KeycapButton()
+    private let symbolsKey = KeycapButton(), separatorKey = KeycapButton(), spellingKey = KeycapButton()
     private let spellingStrip = NineKeySpellingStrip()
     private var spellingChoicesOpen = false
     private var symbolPage = false
-    /// The nine-key punctuation key shows its marks in the candidate row until one is chosen.
-    private var punctuationOpen = false
+    private let punctuationRail = NineKeyPunctuationRail()
     /// No key has been typed since the number page opened from letters.
     private var numberPageFresh = false
     private lazy var nineKeySpelling: NineKeyPinyin = {
@@ -166,7 +165,7 @@ final class KeyboardViewController: UIInputViewController {
             StandardKeyControl(rawValue: key.rawValue).map { ($0, value) }
         })
         values[.symbols] = symbolsKey; values[.separator] = separatorKey
-        values[.spelling] = spellingKey; values[.punctuation] = punctuationKey
+        values[.spelling] = spellingKey; values[.punctuation] = punctuationRail
         return values
     }
     private var usesNineKeyEngine: Bool {
@@ -416,8 +415,7 @@ final class KeyboardViewController: UIInputViewController {
         candidateStrip.onSelect = { [weak self] index in
             guard let self else { return }; self.collapseCandidates(); self.surface.cancel()
             self.surface.feedback.send(.selection, combination: UUID().uuidString)
-            if self.punctuationOpen { self.choosePunctuation(index) }
-            else if self.showingAssociations { self.chooseAssociation(index) } else { self.receive(self.engine.candidate(index)) }
+            if self.showingAssociations { self.chooseAssociation(index) } else { self.receive(self.engine.candidate(index)) }
         }
         candidateStrip.onPress = { [weak self] in self?.surface.feedback.send(.press) }
         candidateStrip.onExpand = { [weak self] in self?.expanded.toggle(); self?.resize() }
@@ -426,6 +424,7 @@ final class KeyboardViewController: UIInputViewController {
             bufferPanel.addSubview(line)
         }
         source.role = .input; result.role = .output
+        source.makePasteAction = { [weak self] in self?.makeBufferPasteAction() }
         // Tapping an output block reads it aloud without sending it; tap again to hear it again.
         result.onTapBlock = { [weak self] index in self?.readOutputBlock(index) }
         result.onTapBackground = { [weak self] in if self?.isDefaultBuffer == true { self?.showTypingCard() } }
@@ -561,14 +560,15 @@ final class KeyboardViewController: UIInputViewController {
             self.type("'")
         }
         configure(spellingKey, "选拼音") { [weak self] in
-            guard let self else { return }; self.spellingChoicesOpen.toggle(); self.punctuationOpen = false; self.render()
+            guard let self else { return }; self.spellingChoicesOpen.toggle(); self.render()
         }
-        configure(punctuationKey, "，。?!") { [weak self] in
+        punctuationRail.onSelect = { [weak self] mark in
             guard let self, self.usesNineKey else { return }
-            self.punctuationOpen.toggle(); self.spellingChoicesOpen = false; self.collapseCandidates(); self.render()
+            self.surface.feedback.send(.press); self.surface.cancel()
+            self.spellingChoicesOpen = false; self.collapseCandidates()
+            self.insertAlternate(mark)
         }
-        punctuationKey.accessibilityLabel = L("中文标点", "Chinese punctuation")
-        for (id, button) in [("symbols", symbolsKey), ("separator", separatorKey), ("spelling", spellingKey), ("punctuation", punctuationKey)] {
+        for (id, button) in [("symbols", symbolsKey), ("separator", separatorKey), ("spelling", spellingKey)] {
             button.accessibilityIdentifier = "keyboard.nineKey.\(id)"
         }
         status.font = .systemFont(ofSize: 13); status.numberOfLines = 3
@@ -704,6 +704,7 @@ final class KeyboardViewController: UIInputViewController {
         bufferEnabled = mode.0; selectedPlugin = mode.1; refreshPluginMenu(); render()
     }
     @objc private func protect() {
+        source.dismissPasteMenu()
         // The owned host proxy is valid only while this keyboard is active.
         // Clear its unfinished mark before deactivation, then stop recovery
         // before cleanup/render can create another height-gap callback.
@@ -720,7 +721,7 @@ final class KeyboardViewController: UIInputViewController {
         breakAssociationChain(); saveAssociationHistory()
         stopDefaultAutoSend(); liveTyping.reset()
         returnKey.cancelTracking(with: nil); pressedReturn = nil
-        cancelDeletes(); shiftState = .off; punctuationOpen = false
+        cancelDeletes(); shiftState = .off
         metrics.sampleMemory(); metrics.save()
         consentThisSession.removeAll(); speaker.stop(); session.reset(); statsTimer?.invalidate(); statsTimer = nil; surface.retire(); cancelRequest(); engine.suspend(); snapshot = .init(); buffer = .init(); bufferEnabled = false; selectedPlugin = nil; panelOpen = false; status.text = ""; refreshPluginMenu(); render()
     }
@@ -838,7 +839,7 @@ final class KeyboardViewController: UIInputViewController {
             value = config.keyboardChord.outputEncoding == .ziranma ? .ziranma : .pinyin
         }
         cancelDeletes()
-        spellingChoicesOpen = false; symbolPage = false; punctuationOpen = false
+        spellingChoicesOpen = false; symbolPage = false
         engine.clear(); snapshot = .init(); chordPreview = ""; surface.cancel()
         var selectedImported = false
         importedKeyboardLayouts = nil; importedNineKeyEngine = false
@@ -1045,13 +1046,6 @@ final class KeyboardViewController: UIInputViewController {
         if oneShot { symbolPage = false; surface.numeric = false }
         render()
     }
-    /// A mark from the nine-key strip settles the composition first, like an alternate.
-    private func choosePunctuation(_ index: Int) {
-        punctuationOpen = false
-        guard PunctuationLayout.strip.indices.contains(index), onscreen,
-              currentDocument == DocumentIdentity.read(textDocumentProxy) else { render(); return }
-        insertAlternate(PunctuationLayout.strip[index])
-    }
     private func insertAlternate(_ text: String) {
         guard onscreen, currentDocument == DocumentIdentity.read(textDocumentProxy) else { return }
         // Digits here are literal text, never a candidate-selection shortcut.
@@ -1192,8 +1186,6 @@ final class KeyboardViewController: UIInputViewController {
         if let pending = pendingAIConsent, !isCurrentConsent(pending) { dismissAIConsent() }
         syncCustomLayout()
         surface.chineseNumberPages = chineseNumberPages
-        if !usesNineKey { punctuationOpen = false }
-        punctuationKey.isSelected = punctuationOpen
         var spellings = usesNineKey ? nineKeySpelling.choices(for: engine.rawInput) : []
         if let best = engine.candidateReadings.first?.split(separator: " ").first.map(String.init),
            let index = spellings.firstIndex(of: best) { spellings.remove(at: index); spellings.insert(best, at: 0) }
@@ -1205,10 +1197,10 @@ final class KeyboardViewController: UIInputViewController {
             if bufferEnabled { delivery.discardMarkedText() }
             else if let target = currentDocument { delivery.updateMarkedText(compositionText, target: target) }
         }
-        candidateStrip.showsChineseMarks = punctuationOpen
-        candidateStrip.update(punctuationOpen ? PunctuationLayout.strip : showingAssociations ? associations : snapshot.candidates,
-                              comments: punctuationOpen || showingAssociations || usesNineKey ? [] : engine.candidateReadings,
-                              context: punctuationOpen ? "punctuation" : showingAssociations ? "associations" : "composition:\(snapshot.preedit)")
+        candidateStrip.showsChineseMarks = false
+        candidateStrip.update(showingAssociations ? associations : snapshot.candidates,
+                              comments: showingAssociations || usesNineKey ? [] : engine.candidateReadings,
+                              context: showingAssociations ? "associations" : "composition:\(snapshot.preedit)")
         renderHandPreview(); renderShortcuts(); refreshLanguageSwap(); refreshKeyboardSkin(); renderBuffer(); resize()
     }
     private func syncCustomLayout() {
@@ -1288,6 +1280,7 @@ final class KeyboardViewController: UIInputViewController {
             gapPlaceholder.backgroundColor = .clear; gapPlaceholder.ink = theme.palette.ink
             panel.backgroundColor = theme.palette.background
             handPreview.theme = theme
+            punctuationRail.theme = theme
             for (action, view) in standardFunctions {
                 guard let button = view as? KeycapButton else { continue }
                 // Nine-key and QWERTY share one function-key style.
@@ -1324,7 +1317,7 @@ final class KeyboardViewController: UIInputViewController {
     }
     /// An empty candidate row offers the plugins instead.
     private func renderShortcuts() {
-        let empty = snapshot.preedit.isEmpty && snapshot.candidates.isEmpty && !showingAssociations && !punctuationOpen && !surface.isChordActive && handPreview.isHidden
+        let empty = snapshot.preedit.isEmpty && snapshot.candidates.isEmpty && !showingAssociations && !surface.isChordActive && handPreview.isHidden
         let choosing = handPreview.isHidden && !showingAssociations && (!snapshot.preedit.isEmpty || !snapshot.candidates.isEmpty)
         if moreButton.isHidden != choosing { moreButton.isHidden = choosing }
         if bufferButton.isHidden != choosing { bufferButton.isHidden = choosing }
@@ -1682,7 +1675,6 @@ final class KeyboardViewController: UIInputViewController {
         expanded = false; candidateStrip.setNeedsLayout(); resize()
     }
     private func noteTypingKey(backspace: Bool = false) {
-        if punctuationOpen { punctuationOpen = false; render() }
         // A key press hides associations; Delete also ends the learning chain.
         if backspace { breakAssociationChain() } else { associations = [] }
         if !backspace { collapseCandidates() }
@@ -2015,6 +2007,27 @@ final class KeyboardViewController: UIInputViewController {
     private func explainClipboardAccess() {
         status.text = L("读取剪贴板需要为 \(ProductBrand.name) 开启“完全访问”", "Pasting needs Full Access for \(ProductBrand.name)"); render()
     }
+    private func makeBufferPasteAction() -> UIAction? {
+        guard onscreen, bufferEnabled, let target = currentDocument else { return nil }
+        let revision = buffer.sourceRevision, cursor = buffer.cursor, selection = buffer.selection, plugin = selectedPlugin
+        return UIAction(title: L("粘贴", "Paste"), image: UIImage(systemName: "doc.on.clipboard")) { [weak self] _ in
+            guard let self, self.currentDocument == target,
+                  self.buffer.sourceRevision == revision, self.buffer.cursor == cursor, self.buffer.selection == selection,
+                  self.selectedPlugin == plugin, self.beginPaste() else { return }
+            let request = self.pendingPaste?.id
+            // Read only after the explicit Paste action. Keep PendingPaste alive
+            // through the system's clipboard permission alert.
+            let text: String?
+            #if KEYBOARD_LAYOUT_TESTS
+            text = self.developmentReadClipboard?()
+            #else
+            text = UIPasteboard.general.string
+            #endif
+            guard self.pendingPaste?.id == request else { return }
+            self.pendingPaste?.text = text ?? ""
+            self.applyPendingPaste()
+        }
+    }
     private func beginPaste(collectOnly: Bool = false) -> Bool {
         guard onscreen, bufferEnabled, pendingPaste == nil, hostImportTask == nil, let target = currentDocument,
               target == DocumentIdentity.read(textDocumentProxy) else { return false }
@@ -2060,7 +2073,15 @@ final class KeyboardViewController: UIInputViewController {
             }
             render(); return
         }
-        // Only the clipboard history collects text now; the Buffer's own input line has no paste control.
+        var pasted = buffer
+        pasted.insert(text)
+        guard pasted.source.utf8.count <= 16 * 1024 else {
+            status.text = L("Buffer 已满，请先插入或清空", "Buffer is full. Insert or clear it first."); render(); return
+        }
+        cancelRequest(); stopDefaultAutoSend(); autoSuspended = true
+        buffer = pasted; buffer.invalidateResult()
+        status.text = L("已粘贴，确认后再发送", "Pasted. Send when ready.")
+        render()
     }
     private func readOutputBlock(_ index: Int) {
         guard onscreen, needsPluginResult, selectedPlugin != .art, !buffer.generating, buffer.pluginPending.indices.contains(index) else { return }

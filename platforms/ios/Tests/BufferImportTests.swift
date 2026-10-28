@@ -4,6 +4,87 @@ import RimesCore
 @testable import RIMES
 
 @MainActor final class BufferImportTests: XCTestCase {
+    func testLongPressPasteActionReadsOnlyOnSelectionAndInsertsAtCursor() async throws {
+        let (window, controller) = host(); defer { window.isHidden = true; controller.developmentAutoDelay(0) }
+        controller.developmentClipboardAccess = true
+        controller.developmentBuffer("前后"); controller.developmentBufferCursor(1)
+        var reads = 0
+        controller.developmentReadClipboard = { reads += 1; return " 👨‍👩‍👧‍👦\n " }
+        let source = controller.layoutViews.source
+        XCTAssertTrue(source.gestureRecognizers?.contains { $0 is UILongPressGestureRecognizer } == true)
+        let action = try XCTUnwrap(source.makePasteAction?())
+        XCTAssertEqual(reads, 0)
+        XCTAssertNil(controller.layoutViews.result.makePasteAction)
+        var time: TimeInterval = 0; controller.defaultClockNow = { time }
+        controller.developmentAutoDelay(1)
+        perform(action)
+        XCTAssertEqual(reads, 1)
+        XCTAssertEqual(controller.developmentBufferSource.text, "前 👨‍👩‍👧‍👦\n 后")
+        controller.developmentAutoTick(); time = 10; controller.developmentAutoTick()
+        XCTAssertTrue(controller.layoutProxy.native.text.isEmpty)
+        XCTAssertFalse(source.isFirstResponder)
+        window.layoutIfNeeded()
+        source.presentPasteMenu(at: CGPoint(x: 30, y: source.bounds.midY))
+        try await Task.sleep(nanoseconds: 400_000_000)
+        let image = UIGraphicsImageRenderer(bounds: window.bounds).image { window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
+        let attachment = XCTAttachment(image: image); attachment.name = "buffer-native-paste-menu"; attachment.lifetime = .keepAlways; add(attachment)
+        source.dismissPasteMenu()
+        XCTAssertEqual(reads, 1, "Presenting a menu must not read the clipboard")
+    }
+
+    func testStalePasteMenuAndDeniedAccessNeverReadClipboard() throws {
+        for change in 0..<5 {
+            let (window, controller) = host(); defer { window.isHidden = true }
+            controller.developmentClipboardAccess = true; controller.developmentBuffer("原文")
+            let action = try XCTUnwrap(controller.layoutViews.source.makePasteAction?())
+            controller.developmentReadClipboard = { XCTFail("Stale or denied paste read clipboard"); return "不该粘贴" }
+            switch change {
+            case 0: controller.layoutProxy.documentIdentifier = UUID()
+            case 1: controller.developmentType("编辑")
+            case 2: controller.developmentPlugin(.ask, source: "原文")
+            case 3: controller.developmentClipboardAccess = false
+            default: controller.developmentBufferCursor(0)
+            }
+            perform(action)
+            XCTAssertFalse(controller.developmentBufferSource.text.contains("不该粘贴"))
+            XCTAssertTrue(controller.layoutProxy.native.text.isEmpty)
+        }
+    }
+
+    func testPastePermissionAlertRestoresOnlyTheOriginalDraft() throws {
+        for changedField in [false, true] {
+            let (window, controller) = host(); defer { window.isHidden = true }
+            controller.developmentClipboardAccess = true
+            controller.developmentBuffer("前后"); controller.developmentBufferCursor(1)
+            let action = try XCTUnwrap(controller.layoutViews.source.makePasteAction?())
+            controller.developmentReadClipboard = {
+                controller.developmentHostResigned()
+                if changedField { controller.layoutProxy.documentIdentifier = UUID() }
+                return "粘贴"
+            }
+            perform(action); controller.developmentResume()
+            XCTAssertEqual(controller.developmentBufferSource.text, changedField ? "" : "前粘贴后")
+            XCTAssertTrue(controller.layoutProxy.native.text.isEmpty)
+        }
+    }
+
+    func testEmptyOrOversizedClipboardKeepsDraftAndPasteClearsOldAIResult() throws {
+        for text in ["", String(repeating: "大", count: 6000), "新消息"] {
+            let (window, controller) = host(); defer { window.isHidden = true }
+            controller.developmentClipboardAccess = true
+            controller.developmentPlugin(.ask, source: "原文", output: "旧回复")
+            controller.developmentReadClipboard = { text }
+            perform(try XCTUnwrap(controller.layoutViews.source.makePasteAction?()))
+            XCTAssertEqual(controller.developmentBufferSource.text, text == "新消息" ? "原文新消息" : "原文")
+            if text == "新消息" { XCTAssertTrue(controller.layoutViews.result.text.isEmpty) }
+            XCTAssertTrue(controller.layoutProxy.native.text.isEmpty)
+        }
+    }
+
+    private func perform(_ action: UIAction) {
+        let button = UIButton(); button.addAction(action, for: .touchUpInside); button.sendActions(for: .touchUpInside)
+    }
+
     func testOpeningTheBufferNeverShowsOrImportsHostTextAndTheFieldIsLeftAlone() throws {
         for width: CGFloat in [320, 393, 852] {
             let (window, controller) = host(width: width); defer { window.isHidden = true }

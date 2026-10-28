@@ -3,7 +3,27 @@ import RimesCore
 
 /// One line that never wraps; drag horizontally to read the rest. Optional
 /// block backgrounds and an overlay caret never change the text's own layout.
-final class SingleLineTextView: UIScrollView {
+final class SingleLineTextView: UIScrollView, UIEditMenuInteractionDelegate {
+    /// Resolve the action when the menu opens, without reading the clipboard or
+    /// taking first responder away from the host app's text field.
+    var makePasteAction: (() -> UIAction?)?
+    private lazy var editMenu = UIEditMenuInteraction(delegate: self)
+    private var pasteAction: UIAction?
+    @objc private func held(_ gesture: UILongPressGestureRecognizer) {
+        guard gesture.state == .began else { return }
+        presentPasteMenu(at: gesture.location(in: self))
+    }
+    func presentPasteMenu(at point: CGPoint) {
+        guard role == .input,
+              let action = makePasteAction?() else { return }
+        pasteAction = action
+        editMenu.presentEditMenu(with: UIEditMenuConfiguration(identifier: nil, sourcePoint: point))
+    }
+    func dismissPasteMenu() { editMenu.dismissMenu(); pasteAction = nil }
+    func editMenuInteraction(_ interaction: UIEditMenuInteraction, menuFor configuration: UIEditMenuConfiguration, suggestedActions: [UIMenuElement]) -> UIMenu? {
+        guard role == .input, let pasteAction else { return nil }
+        return UIMenu(children: [pasteAction])
+    }
     private let label = UILabel()
     private let caret = UIView()
     /// Holds the text, caret and block backgrounds, clipped to a rounded area just inside the
@@ -110,6 +130,10 @@ final class SingleLineTextView: UIScrollView {
     } }
     override init(frame: CGRect) {
         super.init(frame: frame)
+        addInteraction(editMenu)
+        let hold = UILongPressGestureRecognizer(target: self, action: #selector(held(_:)))
+        hold.minimumPressDuration = 0.45
+        addGestureRecognizer(hold)
         label.numberOfLines = 1; label.lineBreakMode = .byClipping
         canvas.isUserInteractionEnabled = false; canvas.layer.mask = canvasClip
         addSubview(canvas)

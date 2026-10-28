@@ -1,0 +1,71 @@
+name: iOS TrollStore source build
+on:
+  push:
+    branches: ['fix/ios-buffer-paste-punctuation']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ios-trollstore-source-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 90
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          submodules: true
+          persist-credentials: false
+      - name: Build source and run shared tests
+        run: platforms/ios/scripts/build.sh
+      - name: Hosted keyboard and release regression tests
+        run: |
+          python3 -m unittest discover -s scripts/release -p 'test_ios*.py' -v
+          ruby platforms/ios/scripts/tests/release-config-test.rb
+          platforms/ios/scripts/test-simulator.sh
+      - name: Build Release device app and package TrollStore IPA
+        run: |
+          xcodebuild -project platforms/ios/RIMES.xcodeproj -scheme RIMES \
+            -configuration Release -destination 'generic/platform=iOS' \
+            -derivedDataPath platforms/ios/build/DeviceDerivedData CODE_SIGNING_ALLOWED=NO build
+          python3 platforms/ios/scripts/verify-release-ipa.py --check-unsigned-app platforms/ios/build/DeviceDerivedData/Build/Products/Release-iphoneos/RIMES.app
+          mkdir -p "$RUNNER_TEMP/unsigned/Payload" output
+          ditto platforms/ios/build/DeviceDerivedData/Build/Products/Release-iphoneos/RIMES.app "$RUNNER_TEMP/unsigned/Payload/RIMES.app"
+          ditto -c -k --keepParent --norsrc "$RUNNER_TEMP/unsigned/Payload" "$RUNNER_TEMP/unsigned.ipa"
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, plistlib, subprocess
+          app = pathlib.Path(os.environ['RUNNER_TEMP']) / 'unsigned/Payload/RIMES.app'
+          info = plistlib.loads((app / 'Info.plist').read_bytes())
+          version, build = info['CFBundleShortVersionString'], info['CFBundleVersion']
+          source = pathlib.Path(os.environ['RUNNER_TEMP']) / 'unsigned.ipa'
+          sha = hashlib.sha256(source.read_bytes()).hexdigest()
+          output = pathlib.Path('output') / f'XSIME-{version}-{build}-TrollStore.ipa'
+          subprocess.run(['python3', 'scripts/release/create-ios-trollstore-ipa.py', str(source), str(output), '--sha256', sha], check=True)
+          pathlib.Path('output/source.json').write_text(json.dumps({'commit': os.environ['GITHUB_SHA'], 'run_id': os.environ['GITHUB_RUN_ID'], 'version': version, 'build': build, 'configuration': 'Release', 'source_sha256': sha}, indent=2) + '\n')
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: TrollStore-source-${{ github.sha }}
+          path: output/
+          if-no-files-found: error
+      - name: Export test screenshots
+        if: always()
+        run: |
+          mkdir -p test-evidence
+          for result in platforms/ios/build/DerivedData/Logs/Test/*.xcresult; do
+            if [ -d "$result" ]; then
+              xcrun xcresulttool export attachments --path "$result" --output-path "test-evidence/$(basename "$result")"
+            fi
+          done
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: keyboard-test-evidence-${{ github.sha }}
+          path: |
+            test-evidence/
+            platforms/ios/build/DerivedData/Logs/Test/*.xcresult
+          if-no-files-found: warn
+          retention-days: 7
