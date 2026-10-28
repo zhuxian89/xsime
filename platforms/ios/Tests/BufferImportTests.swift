@@ -26,7 +26,7 @@ import RimesCore
         window.layoutIfNeeded()
         source.presentPasteMenu(at: CGPoint(x: 30, y: source.bounds.midY))
         try await Task.sleep(nanoseconds: 400_000_000)
-        let image = UIGraphicsImageRenderer(bounds: window.bounds).image { window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
+        let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
         let attachment = XCTAttachment(image: image); attachment.name = "buffer-native-paste-menu"; attachment.lifetime = .keepAlways; add(attachment)
         source.dismissPasteMenu()
         XCTAssertEqual(reads, 1, "Presenting a menu must not read the clipboard")
