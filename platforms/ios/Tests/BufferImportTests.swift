@@ -5,7 +5,8 @@ import RimesCore
 
 @MainActor final class BufferImportTests: XCTestCase {
     func testLongPressPasteActionReadsOnlyOnSelectionAndInsertsAtCursor() async throws {
-        let (window, controller) = host(); defer { window.isHidden = true; controller.developmentAutoDelay(0) }
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let (window, controller) = host(scene: scene); defer { window.isHidden = true; controller.developmentAutoDelay(0) }
         controller.developmentClipboardAccess = true
         controller.developmentBuffer("前后"); controller.developmentBufferCursor(1)
         var reads = 0
@@ -26,7 +27,19 @@ import RimesCore
         window.layoutIfNeeded()
         source.presentPasteMenu(at: CGPoint(x: 30, y: source.bounds.midY))
         try await Task.sleep(nanoseconds: 400_000_000)
-        let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
+        func containsPaste(_ view: UIView) -> Bool {
+            if let label = view as? UILabel, label.text == L("粘贴", "Paste") { return true }
+            return view.subviews.contains(where: containsPaste)
+        }
+        XCTAssertTrue(scene.windows.filter { !$0.isHidden }.contains(where: containsPaste), "The native edit menu must actually be visible")
+        let image = UIGraphicsImageRenderer(bounds: window.bounds).image { context in
+            for visible in scene.windows where !visible.isHidden {
+                context.cgContext.saveGState()
+                context.cgContext.translateBy(x: visible.frame.minX - window.frame.minX, y: visible.frame.minY - window.frame.minY)
+                visible.layer.render(in: context.cgContext)
+                context.cgContext.restoreGState()
+            }
+        }
         let attachment = XCTAttachment(image: image); attachment.name = "buffer-native-paste-menu"; attachment.lifetime = .keepAlways; add(attachment)
         source.dismissPasteMenu()
         XCTAssertEqual(reads, 1, "Presenting a menu must not read the clipboard")
@@ -265,8 +278,10 @@ import RimesCore
         controller.layoutProxy.native.text = text
         controller.layoutProxy.native.selectedRange = NSRange(location: cursor ?? text.utf16.count, length: 0)
     }
-    private func host(width: CGFloat = 393) -> (UIWindow, KeyboardViewController) {
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: width, height: 900))
+    private func host(width: CGFloat = 393, scene: UIWindowScene? = nil) -> (UIWindow, KeyboardViewController) {
+        let window: UIWindow
+        if let scene { window = UIWindow(windowScene: scene); window.frame = scene.coordinateSpace.bounds }
+        else { window = UIWindow(frame: CGRect(x: 0, y: 0, width: width, height: 900)) }
         let parent = UIViewController(); window.rootViewController = parent; window.makeKeyAndVisible()
         let controller = KeyboardViewController(); controller.layoutNeedsInputModeSwitchKey = false
         controller.loadViewIfNeeded(); controller.developmentResetPreferences()
