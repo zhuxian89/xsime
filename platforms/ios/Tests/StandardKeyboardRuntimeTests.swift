@@ -160,23 +160,23 @@ import RimesCore
         keyboard.developmentTapShift()
         XCTAssertEqual(keyboard.developmentShiftState, "off")
     }
-    /// Nine-key keeps symbols under the rail and language beside Space.
+    /// Every standard page keeps language between Space and Return.
     func testStandardBottomRowsKeepUtilitiesAndSpace() throws {
         for width: CGFloat in [310, 383, 842] {
-            for mode in [StandardKeyboardMode.qwerty, .nineKey] {
+            for mode in [StandardKeyboardMode.qwerty, .nineKey, .numeric, .symbols] {
                 let geometry = StandardKeyboardGeometry.make(width: width, mode: mode, landscape: width > 600)
                 XCTAssertNil(geometry.controls[.emoji], "\(mode) still has an emoji key")
-                let row = try [StandardKeyControl.numbers, .language, .space].map { try XCTUnwrap(geometry.controls[$0]) }
+                let row = try [StandardKeyControl.numbers, .space, .language].map { try XCTUnwrap(geometry.controls[$0]) }
                 let enter = try XCTUnwrap(geometry.controls[.enter])
                 for frame in row { XCTAssertEqual(frame.maxY, geometry.height, accuracy: 0.01) }
                 XCTAssertEqual(enter.maxY, geometry.height, accuracy: 0.01)
-                XCTAssertLessThan(row[0].minX, row[1].minX)
+                XCTAssertLessThan(row[0].maxX, row[1].minX)
+                XCTAssertLessThan(row[1].maxX, row[2].minX)
+                XCTAssertLessThan(row[2].maxX, enter.minX)
                 if mode == .nineKey {
-                    XCTAssertLessThan(row[2].minX, row[1].minX)
                     XCTAssertEqual(geometry.controls[.punctuation]?.minX, 0)
                     XCTAssertEqual(geometry.controls[.symbols]?.minX, 0)
-                } else { XCTAssertLessThan(row[1].minX, row[2].minX) }
-                XCTAssertLessThan(row[2].minX, enter.minX)
+                }
             }
         }
     }
@@ -208,6 +208,10 @@ import RimesCore
         keyboard.developmentNumeric(); keyboard.developmentLanguage(); keyboard.developmentType("abc")
         XCTAssertEqual(keyboard.layoutProxy.native.text, "123abc")
         XCTAssertEqual(keyboard.layoutViews.keys.standardMode, .qwerty)
+        window.layoutIfNeeded(); keyboard.view.layoutIfNeeded()
+        let image = UIGraphicsImageRenderer(bounds: keyboard.view.bounds).image { keyboard.view.layer.render(in: $0.cgContext) }
+        let attachment = XCTAttachment(image: image); attachment.name = "english-language-key-right"
+        attachment.lifetime = .keepAlways; add(attachment)
         keyboard.developmentLanguage()
         XCTAssertEqual(keyboard.layoutViews.keys.standardMode, .nineKey)
     }

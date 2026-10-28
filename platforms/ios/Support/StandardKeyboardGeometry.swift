@@ -83,8 +83,9 @@ struct StandardKeyboardGeometry {
         value.controls[mode == .qwerty ? .shift : .symbols] = rect(0, 2, sideWidth)
         value.controls[.backspace] = rect(width - sideWidth, 2, sideWidth)
         // Keep a wide Space, explicit language switch and host-labelled Return.
-        // 123 | 中/英 | space | return, as in the nine-key layout. No emoji key.
-        let weights: [(StandardKeyControl, CGFloat)] = [(.numbers, 0.85), (.language, 0.85), (.space, 6.4), (.enter, 1.9)]
+        // 123 | space | 中/英 | return: keep language to the right of Space
+        // in both QWERTY and nine-key, including the number/symbol pages.
+        let weights: [(StandardKeyControl, CGFloat)] = [(.numbers, 0.85), (.space, 6.4), (.language, 0.85), (.enter, 1.9)]
         let footerUnit = (width - gap * CGFloat(weights.count - 1)) / 10
         var x: CGFloat = 0
         for (key, weight) in weights {
