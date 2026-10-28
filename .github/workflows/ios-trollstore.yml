@@ -1,0 +1,40 @@
+name: iOS TrollStore packaging
+
+on:
+  push:
+    branches: [main, 'fix/ios-trollstore-*']
+    paths:
+      - 'scripts/release/*ios*trollstore*'
+      - 'platforms/ios/scripts/verify-release-ipa.py'
+      - '.github/workflows/ios-trollstore.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Shared-group and packaging regression tests
+        run: python3 -m unittest discover -s scripts/release -p 'test_ios*.py' -v
+      - name: Download the original unsigned release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p input output
+          gh release download v1.2.0 --repo scholay/xsime --pattern XSIME-1.2.0-67-ios-unsigned.ipa --dir input
+      - name: Sign, package and verify the exact IPA
+        run: |
+          python3 scripts/release/create-ios-trollstore-ipa.py \
+            input/XSIME-1.2.0-67-ios-unsigned.ipa \
+            output/XSIME-1.2.0-67-TrollStore.ipa \
+            --sha256 b2761a03835dcb7bfc11501f01d54c15aeb3a2643c4dc1f93ed8dc05b9479fe1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: XSIME-1.2.0-67-TrollStore
+          path: output/
+          if-no-files-found: error
