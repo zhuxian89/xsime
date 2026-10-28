@@ -10,6 +10,7 @@ final class NineKeyPunctuationRail: UIScrollView {
     static let marks = ["，", "。", "？", "！", "、", "：", "；", "……", "/", "“", "”", "（", "）"]
     var onSelect: ((String) -> Void)?
     private(set) var buttons: [UIButton] = []
+    private var separators: [UIView] = []
     var theme: StatusSkin = .rhino { didSet { updateTheme() } }
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -30,6 +31,12 @@ final class NineKeyPunctuationRail: UIScrollView {
             button.accessibilityIdentifier = "keyboard.nineKey.mark.\(mark)"
             button.addAction(UIAction { [weak self] _ in self?.onSelect?(mark) }, for: .touchUpInside)
             addSubview(button); buttons.append(button)
+            if buttons.count > 1 {
+                let line = UIView()
+                line.isUserInteractionEnabled = false
+                line.accessibilityElementsHidden = true
+                addSubview(line); separators.append(line)
+            }
         }
         updateTheme()
     }
@@ -38,6 +45,7 @@ final class NineKeyPunctuationRail: UIScrollView {
     private func updateTheme() {
         backgroundColor = theme.palette.functional
         for button in buttons { button.setTitleColor(theme.palette.ink, for: .normal) }
+        for line in separators { line.backgroundColor = theme.palette.ink.withAlphaComponent(0.12) }
     }
     override func layoutSubviews() {
         super.layoutSubviews()
@@ -45,6 +53,10 @@ final class NineKeyPunctuationRail: UIScrollView {
         let rowHeight = max(32, bounds.height / 4)
         for (index, button) in buttons.enumerated() {
             button.frame = CGRect(x: 0, y: CGFloat(index) * rowHeight, width: bounds.width, height: rowHeight)
+        }
+        let hairline = 1 / max(1, traitCollection.displayScale)
+        for (index, line) in separators.enumerated() {
+            line.frame = CGRect(x: 0, y: CGFloat(index + 1) * rowHeight, width: bounds.width, height: hairline)
         }
         let size = CGSize(width: bounds.width, height: rowHeight * CGFloat(buttons.count))
         if contentSize != size { contentSize = size }

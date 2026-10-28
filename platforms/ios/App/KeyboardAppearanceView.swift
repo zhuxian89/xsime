@@ -156,6 +156,11 @@ private struct KeyboardAppearancePreview: View {
                                     VStack(spacing: 0) {
                                         ForEach(["，", "。", "？", "！"], id: \.self) { mark in
                                             Text(mark).frame(maxWidth: .infinity, maxHeight: .infinity)
+                                                .overlay(alignment: .top) {
+                                                    if mark != "，" {
+                                                        Color(uiColor: theme.palette.ink.withAlphaComponent(0.12)).frame(height: 0.5)
+                                                    }
+                                                }
                                         }
                                     }
                                     .background(Color(uiColor: theme.palette.functional))
@@ -169,7 +174,7 @@ private struct KeyboardAppearancePreview: View {
                         }
                     }
                 }
-            }.aspectRatio(393.0 / 206.0, contentMode: .fit)
+            }.aspectRatio(393 / StandardKeyboardGeometry.height(landscape: false, mode: layout == .nineKey ? .nineKey : .qwerty), contentMode: .fit)
         }
         .padding(8)
         .foregroundStyle(Color(uiColor: theme.palette.ink))

@@ -1441,7 +1441,7 @@ final class KeyboardViewController: UIInputViewController {
         bottom.isHidden = surface.usesManagedLayout && !needsInputModeSwitchKey
         let bufferHeight: CGFloat = landscape ? 60 : 76
         let customHeight = surface.usesCustomLayout ? surface.customLayout.map { CGFloat($0.geometry(width: Double(max(1, width - 10)), landscape: landscape).height) } : nil
-        let standardHeight = surface.usesStandardLayout ? StandardKeyboardGeometry.height(landscape: landscape, percent: landscape ? preferences.landscapeHeight : preferences.portraitHeight) : nil
+        let standardHeight = surface.usesStandardLayout ? StandardKeyboardGeometry.height(landscape: landscape, percent: landscape ? preferences.landscapeHeight : preferences.portraitHeight, mode: surface.standardMode ?? .qwerty) : nil
         return [(bufferPanel, bufferHeight),
                 (candidatePanel, max(32, candidateStrip.fittingHeight(width: max(0, width - 10)))),
                 (spellingStrip, 34),
@@ -2625,8 +2625,9 @@ final class KeyboardViewController: UIInputViewController {
     func developmentSetCustomLayout(_ layout: CustomKeyboardLayout?) {
         customLayoutSnapshot = layout.flatMap { try? $0.validated() }; render(); view.setNeedsLayout(); view.layoutIfNeeded()
     }
-    func developmentOrdinaryAppearance(layout: OrdinaryKeyboardLayout, skin: KeyboardSkin = .system) {
+    func developmentOrdinaryAppearance(layout: OrdinaryKeyboardLayout, skin: KeyboardSkin = .system, keyStyle: KeyboardKeyStyle = .auto) {
         preferences.ordinaryLayout = layout; preferences.keyboardSkin = skin
+        preferences.keyStyle = keyStyle
         preferences.statusSkin = (skin == .system ? StatusSkin.apple : .rhino).rawValue
         choose(preferences.scheme); render(); view.layoutIfNeeded()
     }

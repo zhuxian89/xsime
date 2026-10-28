@@ -396,8 +396,62 @@ import RimesCore
             XCTAssertEqual(text(), "、" + top + "，", "A hidden rail cannot insert into a different layout")
         }
     }
-    private func host() -> (UIWindow, KeyboardViewController) {
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 900))
+    func testLargerNineKeyCapsFitNarrowPortraitLandscapeAndScaledHeights() throws {
+        for width: CGFloat in [306, 380, 417, 842] {
+            let landscape = width > 600
+            for percent in [100, 115, 130] {
+                let height = StandardKeyboardGeometry.height(landscape: landscape, percent: percent, mode: .nineKey)
+                let geometry = StandardKeyboardGeometry.make(width: width, mode: .nineKey, landscape: landscape, availableHeight: height)
+                let frames = geometry.keys.map(\.frame) + Array(geometry.controls.values)
+                for (index, frame) in frames.enumerated() {
+                    XCTAssertGreaterThanOrEqual(frame.minX, 0)
+                    XCTAssertGreaterThanOrEqual(frame.minY, 0)
+                    XCTAssertLessThanOrEqual(frame.maxX, width + 0.01)
+                    XCTAssertLessThanOrEqual(frame.maxY, height + 0.01)
+                    for other in frames.dropFirst(index + 1) { XCTAssertFalse(frame.intersects(other)) }
+                }
+                if !landscape {
+                    for frame in frames { XCTAssertGreaterThanOrEqual(frame.width, 44) }
+                    for key in geometry.keys { XCTAssertGreaterThanOrEqual(key.frame.height, 52 - 0.01) }
+                    XCTAssertGreaterThanOrEqual(try XCTUnwrap(geometry.controls[.space]).height, 44 - 0.01)
+                }
+            }
+        }
+        for (name, width, style): (String, CGFloat, UIUserInterfaceStyle) in [
+            ("portrait", 430, .light), ("narrow-dark", 320, .dark), ("landscape", 852, .light)
+        ] {
+            let (window, keyboard) = host(width: width); defer { window.isHidden = true }
+            window.overrideUserInterfaceStyle = style; keyboard.overrideUserInterfaceStyle = style
+            keyboard.developmentOrdinaryAppearance(layout: .nineKey, keyStyle: .legacy)
+            window.layoutIfNeeded(); keyboard.view.layoutIfNeeded()
+            let keys = keyboard.layoutViews.keys
+            keys.layoutIfNeeded()
+            let originalFrames = keys.developmentKeyFrames
+            let abc = try XCTUnwrap(originalFrames["2"])
+            if width == 430 {
+                // At the reference screenshot's 430 pt width, the central caps
+                // exceed its roughly 85 x 46 pt caps, not merely their text size.
+                XCTAssertGreaterThan(abc.width, 85)
+                XCTAssertGreaterThan(abc.height - 1, 46)
+            }
+            for (digit, frame) in originalFrames {
+                XCTAssertTrue(keys.bounds.contains(frame))
+                XCTAssertEqual(keys.developmentKey(at: CGPoint(x: frame.maxX - 1, y: frame.maxY - 1)), digit)
+            }
+            let rail = try XCTUnwrap(keyboard.developmentStandardFunctions[.punctuation] as? NineKeyPunctuationRail)
+            rail.layoutIfNeeded()
+            if width < 600 { XCTAssertEqual(rail.buttons[3].frame.maxY, rail.bounds.height, accuracy: 0.01) }
+            let image = UIGraphicsImageRenderer(bounds: keyboard.view.bounds).image { keyboard.view.layer.render(in: $0.cgContext) }
+            let attachment = XCTAttachment(image: image); attachment.name = "nine-key-enlarged-\(name)"
+            attachment.lifetime = .keepAlways; add(attachment)
+            keyboard.developmentLanguage(); window.layoutIfNeeded(); keyboard.view.layoutIfNeeded(); keys.layoutIfNeeded()
+            XCTAssertEqual(keys.standardMode, .qwerty)
+            keyboard.developmentLanguage(); window.layoutIfNeeded(); keyboard.view.layoutIfNeeded(); keys.layoutIfNeeded()
+            XCTAssertEqual(keys.developmentKeyFrames, originalFrames, "Switching back must restore the larger nine-key hit regions")
+        }
+    }
+    private func host(width: CGFloat = 393) -> (UIWindow, KeyboardViewController) {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: width, height: 900))
         let parent = UIViewController(); window.rootViewController = parent; window.makeKeyAndVisible()
         let keyboard = KeyboardViewController(); keyboard.layoutNeedsInputModeSwitchKey = false
         keyboard.loadViewIfNeeded(); keyboard.developmentResetPreferences()
