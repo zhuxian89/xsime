@@ -188,7 +188,7 @@ private struct KeyboardAppearancePreview: View {
         case .language: return layout == .nineKey ? "ABC" : "英"
         case .emoji: return "☺"
         case .buffer: return "Buffer"
-        case .symbols: return "#+="
+        case .symbols: return layout == .nineKey ? "符号" : "#+="
         case .separator: return "分隔"
         case .spelling: return "选拼音"
         case .punctuation: return "，。?!"

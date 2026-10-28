@@ -1303,7 +1303,7 @@ final class KeyboardViewController: UIInputViewController {
             for button in [moreButton, bufferButton, aiButton, settingsButton, insertButton, stopButton, runButton, globe, chordDelete] { button.legacyKey = legacy; button.theme = theme }
             bufferButton.accentCap = true; insertButton.accentCap = true
         }
-        symbolsKey.setTitle(symbolPage ? "123" : "#+=", for: .normal)
+        symbolsKey.setTitle(usesNineKey ? L("符号", "Symbols") : (symbolPage ? "123" : "#+="), for: .normal)
         numbers.setTitle(surface.numeric ? (usesNineKeyEngine && !directEnglish ? "拼音" : "ABC") : "123", for: .normal)
         // The Space bar carries no word; it shows the input mode in grey at its lower right.
         spaceKey.setImage(nil, for: .normal); spaceKey.setTitle(nil, for: .normal)
@@ -2074,6 +2074,7 @@ final class KeyboardViewController: UIInputViewController {
             render(); return
         }
         var pasted = buffer
+        if pasted.selection != nil { pasted.backspace() }
         pasted.insert(text)
         guard pasted.source.utf8.count <= 16 * 1024 else {
             status.text = L("Buffer 已满，请先插入或清空", "Buffer is full. Insert or clear it first."); render(); return
@@ -2715,6 +2716,10 @@ final class KeyboardViewController: UIInputViewController {
     var developmentRaw: String { engine.rawInput }
     func developmentSetLayout(_ value: ChordLayout) { changeLayout(value) }
     func developmentBufferCursor(_ cursor: Int) { buffer.moveCursor(cursor - buffer.cursor); render() }
+    func developmentBufferSelection(_ range: Range<Int>) {
+        buffer.moveCursor(range.lowerBound - buffer.cursor)
+        buffer.beginSelection(); buffer.extendSelection(range.count); render()
+    }
     var developmentBufferSource: (text: String, revision: UUID) { (buffer.source, buffer.sourceRevision) }
     func developmentContent(preedit: String = "", candidates: [String] = []) {
         snapshot = .init(preedit: preedit, candidates: candidates); render()

@@ -2,6 +2,7 @@ name: iOS TrollStore source build
 on:
   push:
     branches: ['fix/ios-buffer-paste-punctuation']
+    paths: ['platforms/ios/**', 'Shared/**', 'OfficialPlugins', 'plugins.lock.json', 'scripts/**', '.github/workflows/ios-trollstore-source.yml']
   workflow_dispatch:
 permissions:
   contents: read

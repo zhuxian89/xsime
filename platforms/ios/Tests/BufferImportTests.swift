@@ -85,6 +85,17 @@ import RimesCore
         let button = UIButton(); button.addAction(action, for: .touchUpInside); button.sendActions(for: .touchUpInside)
     }
 
+    func testPasteReplacesSelectedTextIncludingAtTheSizeLimit() throws {
+        let (window, controller) = host(); defer { window.isHidden = true }
+        controller.developmentClipboardAccess = true
+        controller.developmentBuffer(String(repeating: "a", count: 16 * 1024))
+        controller.developmentBufferSelection(0..<16 * 1024)
+        controller.developmentReadClipboard = { "替换👋" }
+        perform(try XCTUnwrap(controller.layoutViews.source.makePasteAction?()))
+        XCTAssertEqual(controller.developmentBufferSource.text, "替换👋")
+        XCTAssertTrue(controller.layoutProxy.native.text.isEmpty)
+    }
+
     func testOpeningTheBufferNeverShowsOrImportsHostTextAndTheFieldIsLeftAlone() throws {
         for width: CGFloat in [320, 393, 852] {
             let (window, controller) = host(width: width); defer { window.isHidden = true }
