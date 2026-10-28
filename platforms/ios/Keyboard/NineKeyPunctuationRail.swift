@@ -17,6 +17,10 @@ final class NineKeyPunctuationRail: UIScrollView {
         layer.cornerRadius = 6; layer.cornerCurve = .continuous
         showsHorizontalScrollIndicator = false; showsVerticalScrollIndicator = true
         alwaysBounceVertical = true; delaysContentTouches = false
+        if #available(iOS 26, *) {
+            topEdgeEffect.isHidden = true; bottomEdgeEffect.isHidden = true
+            leftEdgeEffect.isHidden = true; rightEdgeEffect.isHidden = true
+        }
         for mark in Self.marks {
             let button = UIButton(type: .system)
             button.setTitle(mark, for: .normal)
