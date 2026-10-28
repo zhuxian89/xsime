@@ -1,4 +1,7 @@
 import UIKit
+#if KEYBOARD_LAYOUT_TESTS
+@testable import RIMES
+#endif
 import RimesCore
 
 /// Common marks stay beside the nine-key letters. Drag to reveal the rest;

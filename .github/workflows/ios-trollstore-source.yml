@@ -20,8 +20,24 @@ jobs:
         with:
           submodules: true
           persist-credentials: false
+      - name: Restore pinned native build inputs
+        id: native-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: |
+            Vendor/ios-build
+            Vendor/Rime.xcframework
+          key: ios-trollstore-native-${{ runner.arch }}-xcode26.6-${{ hashFiles('platforms/ios/dependencies.lock.json', 'platforms/ios/scripts/**') }}
       - name: Build source and run shared tests
         run: platforms/ios/scripts/build.sh
+      - name: Save verified native inputs for subsequent checks
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: |
+            Vendor/ios-build
+            Vendor/Rime.xcframework
+          key: ${{ steps.native-cache.outputs.cache-primary-key }}
       - name: Hosted keyboard and release regression tests
         run: |
           python3 -m unittest discover -s scripts/release -p 'test_ios*.py' -v
